@@ -1,0 +1,185 @@
+version: "3.9"
+
+name: open5gs-core
+
+services:
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' localhost:27017/test | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  nrf:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-nrf
+    command: ["open5gs-nrfd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      # Expondo SBI do NRF para validação por HTTP no host
+      - "7777:7777/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-nrfd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ausf:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-ausf
+    command: ["open5gs-ausfd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      nrf:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-ausfd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  udm:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-udm
+    command: ["open5gs-udmd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      nrf:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-udmd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  udr:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-udr
+    command: ["open5gs-udrd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      nrf:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-udrd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  pcf:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-pcf
+    command: ["open5gs-pcfd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      nrf:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-pcfd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  nssf:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-nssf
+    command: ["open5gs-nssfd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      nrf:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-nssfd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  amf:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-amf
+    command: ["open5gs-amfd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      nrf:
+        condition: service_healthy
+    ports:
+      # N2: NGAP via SCTP (porta default do AMF)
+      - "38412:38412/sctp"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-amfd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  smf:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-smf
+    command: ["open5gs-smfd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      nrf:
+        condition: service_healthy
+      upf:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-smfd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  upf:
+    image: gradiant/open5gs:2.7.6
+    container_name: open5gs-upf
+    command: ["open5gs-upfd"]
+    restart: unless-stopped
+    environment:
+      - DB_URI=${DB_URI}
+    depends_on:
+      nrf:
+        condition: service_healthy
+    # UPF precisa de TUN (ogstun). A imagem recomenda TUN ou modo privileged. :contentReference[oaicite:2]{index=2}
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv4.ip_forward=1
+    ports:
+      # N3: GTP-U (porta clássica 2152)
+      - "2152:2152/udp"
+      # N4: PFCP (porta reservada 8805)
+      - "8805:8805/udp"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-upfd >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  mongo_data:
