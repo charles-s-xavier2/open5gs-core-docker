@@ -164,6 +164,7 @@ services:
       nrf:
         condition: service_healthy
     # UPF precisa de TUN (ogstun). A imagem recomenda TUN ou modo privileged. :contentReference[oaicite:2]{index=2}
+    privileged: true
     cap_add:
       - NET_ADMIN
     devices:
